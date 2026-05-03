@@ -1,10 +1,5 @@
 # ============================================================
-#  env.py  —  DroneAgentEnv  (one per drone)
-#
-#  Each drone gets its own Gymnasium-compatible environment
-#  that shares a single SharedSimulation instance.
-#  All 10 envs are synchronised — physics steps only after
-#  every active drone has submitted its action.
+#  env.py  —  DroneAgentEnv  (one per drone, obs size = 22)
 # ============================================================
 
 import numpy as np
@@ -15,27 +10,19 @@ from config import (
     OBS_SIZE, NUM_NEIGHBOURS_OBS,
     WIDTH, HEIGHT, MAX_SPEED, FOV_RANGE,
 )
-from simulation import SharedSimulation, S_FAILED, S_ARRIVED
-from reward import compute_reward
+from simulation import SharedSimulation, S_FAILED
 
 
 class DroneAgentEnv(gym.Env):
     """
-    Single-drone Gymnasium environment backed by SharedSimulation.
-
-    Observation vector (20 values)
-    ───────────────────────────────
-    [0-1]   own velocity            (normalised by MAX_SPEED)
-    [2-3]   own position            (normalised by W, H)
-    [4-5]   relative target pos     (normalised by W, H)
-    [6]     distance to target      (normalised by diagonal)
-    [7-18]  3 nearest neighbours:   rel_x, rel_y, rel_vx, rel_vy
-            (zero-padded when fewer than NUM_NEIGHBOURS_OBS visible)
-    [19]    min distance to any neighbour (normalised by FOV_RANGE)
-
-    Action space (continuous)
-    ─────────────────────────
-    [ax, ay] ∈ [-1, 1]  — normalised thrust vector
+    Observation vector (22 values)
+    [0-1]   own velocity           (÷ MAX_SPEED)
+    [2-3]   own position           (normalised to [-1,1])
+    [4-5]   relative target pos    (÷ W, H)
+    [6]     distance to target     (÷ diagonal)
+    [7-18]  3 nearest neighbours   rel_x, rel_y, rel_vx, rel_vy each
+    [19]    min distance to neighbour
+    [20-21] relative slot position (÷ W, H)  ← NEW
     """
 
     metadata = {"render_modes": ["human"]}
@@ -44,59 +31,54 @@ class DroneAgentEnv(gym.Env):
         super().__init__()
         self.drone_idx = drone_idx
         self.sim       = sim
+        self._max_dist = np.sqrt(WIDTH**2 + HEIGHT**2)
+        self._prev_target_dist: float | None = None
+        self._prev_slot_dist: float | None = None
 
         self.observation_space = spaces.Box(
-            low=-1.0, high=1.0,
-            shape=(OBS_SIZE,),
-            dtype=np.float32,
+            low=-1.0, high=1.0, shape=(OBS_SIZE,), dtype=np.float32
         )
         self.action_space = spaces.Box(
-            low=-1.0, high=1.0,
-            shape=(2,),
-            dtype=np.float32,
+            low=-1.0, high=1.0, shape=(2,), dtype=np.float32
         )
-
-        self._max_dist = np.sqrt(WIDTH**2 + HEIGHT**2)
-
-    # ── Gymnasium API ────────────────────────────────────────
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
-        # Env 0 is responsible for resetting the shared sim
         if self.drone_idx == 0:
             target = options.get("target_pos") if options else None
             self.sim.reset(target_pos=target)
-        obs  = self._get_obs()
-        info = {}
-        return obs, info
+        self._prev_target_dist = None
+        self._prev_slot_dist = None
+        self._sync_reward_baseline()
+        return self._get_obs(), {}
 
     def step(self, action: np.ndarray):
         d = self.sim.get_drone(self.drone_idx)
+        if d.status == S_FAILED:
+            return self._get_obs(), 0.0, True, False, {}
 
-        # if this drone is already done, skip and return terminal obs
-        if d.status in (S_FAILED, S_ARRIVED):
-            obs     = self._get_obs()
-            reward  = 0.0
-            terminated = True
-            truncated  = False
-            return obs, reward, terminated, truncated, {}
-
-        # push action into shared sim (may trigger physics step)
         self.sim.push_action(self.drone_idx, action)
 
+        from reward import compute_reward
         obs        = self._get_obs()
-        reward     = compute_reward(self.drone_idx, self.sim)
-        terminated = (d.status in (S_FAILED, S_ARRIVED)
-                      or self.sim.episode_done)
-        truncated  = False
-        info       = {
-            "arrived":  d.status == S_ARRIVED,
-            "failed":   d.status == S_FAILED,
-            "all_arrived": self.sim.all_arrived,
+        reward     = compute_reward(
+            self.drone_idx,
+            self.sim,
+            self._prev_target_dist,
+            self._prev_slot_dist,
+        )
+        self._sync_reward_baseline()
+        terminated = d.status == S_FAILED or self.sim.episode_done
+        return obs, reward, terminated, False, {
+            "at_slot":     d.at_slot,
+            "all_at_slots": self.sim.all_at_slots,
+            "goal":         self.sim.get_drone_goal(self.drone_idx),
         }
-        return obs, reward, terminated, truncated, info
 
-    # ── Observation builder ──────────────────────────────────
+    def _sync_reward_baseline(self) -> None:
+        d = self.sim.get_drone(self.drone_idx)
+        self._prev_target_dist = float(np.linalg.norm(d.position - self.sim.target))
+        self._prev_slot_dist = float(np.linalg.norm(d.position - self.sim.get_drone_goal(self.drone_idx)))
 
     def _get_obs(self) -> np.ndarray:
         d   = self.sim.get_drone(self.drone_idx)
@@ -106,21 +88,25 @@ class DroneAgentEnv(gym.Env):
         obs += [
             d.velocity[0] / MAX_SPEED,
             d.velocity[1] / MAX_SPEED,
-            (d.position[0] / WIDTH)  * 2 - 1,
-            (d.position[1] / HEIGHT) * 2 - 1,
+            d.position[0] / WIDTH  * 2 - 1,
+            d.position[1] / HEIGHT * 2 - 1,
         ]
 
-        # target info
-        rel_target = sim_target = self.sim.target - d.position
-        obs += [
-            np.clip(rel_target[0] / WIDTH,  -1, 1),
-            np.clip(rel_target[1] / HEIGHT, -1, 1),
-            np.clip(np.linalg.norm(rel_target) / self._max_dist, 0, 1),
+        # target
+        rel_t = self.sim.target - d.position
+        obs  += [
+            np.clip(rel_t[0] / WIDTH,  -1, 1),
+            np.clip(rel_t[1] / HEIGHT, -1, 1),
+            np.clip(np.linalg.norm(rel_t) / self._max_dist, 0, 1),
         ]
 
-        # nearest neighbours (within FOV)
-        neighbours = self._get_neighbours(d)
-        min_dist   = 1.0
+        # neighbours
+        neighbours = sorted(
+            [x for x in self.sim.drones if x.idx != self.drone_idx and x.alive],
+            key=lambda x: np.linalg.norm(d.position - x.position)
+        )[:NUM_NEIGHBOURS_OBS]
+
+        min_dist = 1.0
         for i in range(NUM_NEIGHBOURS_OBS):
             if i < len(neighbours):
                 n       = neighbours[i]
@@ -136,16 +122,14 @@ class DroneAgentEnv(gym.Env):
             else:
                 obs += [0.0, 0.0, 0.0, 0.0]
 
-        # minimum neighbour distance
         obs += [min_dist]
 
-        return np.array(obs, dtype=np.float32)
-
-    def _get_neighbours(self, d) -> list:
-        """Return up to NUM_NEIGHBOURS_OBS nearest alive drones, sorted by distance."""
-        others = [
-            x for x in self.sim.drones
-            if x.idx != d.idx and x.alive
+        # formation slot (NEW)
+        slot     = self.sim.get_formation_slot(self.drone_idx)
+        rel_slot = slot - d.position
+        obs += [
+            np.clip(rel_slot[0] / WIDTH,  -1, 1),
+            np.clip(rel_slot[1] / HEIGHT, -1, 1),
         ]
-        others.sort(key=lambda x: np.linalg.norm(d.position - x.position))
-        return others[:NUM_NEIGHBOURS_OBS]
+
+        return np.array(obs, dtype=np.float32)
