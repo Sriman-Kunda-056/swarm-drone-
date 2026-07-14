@@ -1,6 +1,63 @@
 # Swarm Drone Simulation - IAS Project
 
-## Project Review Guidelines
+Interactive 2D swarm simulator with a classical Boids baseline and an
+experimental multi-agent PPO control stack.
+
+![Boids](https://img.shields.io/badge/Boids_baseline-30_drones-2563eb)
+![PPO agents](https://img.shields.io/badge/experimental_PPO_agents-10-7c3aed)
+![Observation](https://img.shields.io/badge/observation-20D-0ea5e9)
+![Action](https://img.shields.io/badge/action-2D_thrust-2ea44f)
+![Episode](https://img.shields.io/badge/max_episode-800_steps-f59e0b)
+
+## Simulation preview
+
+![Circle formation in the swarm simulator](docs/swarm-formation-preview.png)
+
+The screenshot is extracted from the matching local formation-demo recording
+and shows the actual simulator HUD.
+
+## At a glance
+
+| Verified configuration | Value |
+| --- | ---: |
+| Classical Boids demonstration | **30 drones** |
+| Experimental PPO controllers | **10 agents** |
+| Per-agent observation | **20 values** |
+| Continuous action | **2 values** |
+| Nearest neighbours observed | **3** |
+| Maximum episode length | **800 steps** |
+
+## Architecture preview
+
+```mermaid
+flowchart LR
+    O["20-D observation<br/>per drone"] --> P["Per-agent PPO policy<br/>128 x 128"]
+    P --> Q["Shared action queue"]
+    Q --> S["Shared swarm simulation"]
+    S --> R["Six-term reward"]
+    R --> O
+    S --> H["Pygame HUD<br/>formations + failures"]
+```
+
+> **Experimental RL warning:** the current training loop learns one PPO agent at
+> a time while the shared simulation advances only after all active agents have
+> submitted actions. This creates stale transitions and asymmetric reward timing.
+> The saved checkpoints are therefore excluded from the current source tree and
+> no trained-performance claim is made.
+
+## Quick start
+
+```bash
+python -m pip install -r requirements.txt
+
+# Classical Boids simulation
+python main.py
+
+# Experimental RL demo; uses random actions when checkpoints are absent
+python demo.py
+```
+
+## Legacy presentation notes
 
 **Date:** March 31st, 2026 (Tuesday)  
 **Presentation Time:** 5 minutes  
