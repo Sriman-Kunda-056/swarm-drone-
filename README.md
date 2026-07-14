@@ -9,14 +9,7 @@ experimental multi-agent PPO control stack.
 ![Action](https://img.shields.io/badge/action-2D_thrust-2ea44f)
 ![Episode](https://img.shields.io/badge/max_episode-800_steps-f59e0b)
 
-## Simulation preview
-
-![Circle formation in the swarm simulator](docs/swarm-formation-preview.png)
-
-The screenshot is extracted from the matching local formation-demo recording
-and shows the actual simulator HUD.
-
-## At a glance
+## Evidence at a glance
 
 | Verified configuration | Value |
 | --- | ---: |
@@ -27,7 +20,21 @@ and shows the actual simulator HUD.
 | Nearest neighbours observed | **3** |
 | Maximum episode length | **800 steps** |
 
-## Architecture preview
+## Preview
+
+![Circle formation in the swarm simulator](docs/swarm-formation-preview.png)
+
+The screenshot is extracted from the matching local formation-demo recording
+and shows the actual simulator HUD.
+
+## What it does
+
+- Demonstrates separation, alignment, and cohesion with a 30-drone Boids mode.
+- Switches between swarm, circle, and leader-follower formations at runtime.
+- Simulates random failures, mouse-directed targets, boundaries, and a live HUD.
+- Provides a separate experimental ten-agent PPO environment and training path.
+
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -48,6 +55,8 @@ flowchart LR
 ## Quick start
 
 ```bash
+git clone https://github.com/Sriman-Kunda-056/swarm-drone-.git
+cd swarm-drone-
 python -m pip install -r requirements.txt
 
 # Classical Boids simulation
@@ -57,76 +66,7 @@ python main.py
 python demo.py
 ```
 
-## Legacy presentation notes
-
-**Date:** March 31st, 2026 (Tuesday)  
-**Presentation Time:** 5 minutes  
-**Q&A:** 2 minutes
-
----
-
-## PPT Structure (8-10 Slides)
-
-### ✅ 1. Problem Definition & Objectives
-- Clearly state the problem and goals of your project
-- Highlight its relevance to the IAS (Intelligent Autonomous Systems) course
-
-### ✅ 2. Background & Novelty
-- Briefly summarize related works or literature
-- Highlight what is new or unique about your approach
-
-### ✅ 3. Proposed Methodology / Approach
-- Explain your design, model, or algorithm
-- Include a simple block diagram or workflow
-
-### ✅ 4. Hardware Implementation / Simulation Progress
-- Present completed work such as hardware working model
-- Show code/simulation results
-
-### ✅ 5. Preliminary Results / Validation
-- Include initial results and observations
-- Discuss challenges faced and how you plan to address them
-
-### ✅ 6. Team Contribution & Next Steps
-- Mention each member's contribution
-- Outline remaining tasks before the final review
-
----
-
-## Expectations
-
-- ✅ Teams should show clear progress since the zeroth review (beyond just problem definition)
-- ✅ Presentations should be concise, visual, and well-coordinated among members
-- ✅ You are expected to demonstrate understanding of your project, not just slides prepared by one member
-- ✅ Active participation from all team members will be evaluated
-
----
-
-## Project Overview
-
-### Swarm Drone Simulation
-
-A Python-based simulation demonstrating swarm intelligence and multi-agent coordination using Pygame.
-
-### Features
-
-- **Multiple Behavior Modes:**
-  - `Swarm Mode (Press 1)` - Collective movement towards target
-  - `Circle Mode (Press 2)` - Formation in circular pattern around target
-  - `Leader Mode (Press 3)` - Leader-follower coordination
-
-- **Swarm Intelligence Algorithms:**
-  - Separation - Avoid crowding neighbors
-  - Alignment - Steer towards average heading of neighbors
-  - Cohesion - Move towards average position of neighbors
-
-- **Additional Features:**
-  - Random drone failure simulation
-  - Real-time mouse-based target tracking
-  - Visual velocity indicators
-  - Boundary handling
-
-### Controls
+## Controls
 
 | Key | Action |
 |-----|--------|
@@ -137,34 +77,53 @@ A Python-based simulation demonstrating swarm intelligence and multi-agent coord
 | `F` | Manually fail a random drone |
 | Mouse | Set target position |
 
-### Requirements
+## Repository layout
 
-```
-pygame
-numpy
-```
-
-### How to Run
-
-```bash
-pip install pygame numpy
-python main.py
-```
-
----
-
-## File Structure
-
-```
-IAS_project/
-├── main.py          # Main simulation loop and pygame setup
-├── drone.py         # Drone class with swarm behaviors
-├── utils.py         # Utility functions
-├── requirements.txt # Dependencies
-└── README.md        # This file
+```text
+swarm-drone-/
+|-- main.py          # Classical Boids entry point
+|-- drone.py         # Boids drone behavior
+|-- simulation.py    # Shared multi-agent simulation
+|-- env.py           # Experimental RL environment
+|-- reward.py        # Six-term reward calculation
+|-- train.py         # Experimental PPO training
+|-- demo.py          # RL demonstration entry point
+|-- hud.py           # Pygame controls and status overlay
+|-- config.py        # Simulation and policy settings
+`-- docs/            # Reviewed real preview
 ```
 
----
+## Tests and validation
 
-*Best regards,*  
-*Sakthi*
+No automated test suite or reproducible trained-policy benchmark is tracked.
+Use the classical simulator for a manual check of all three formation modes,
+failure/reset controls, boundary behavior, and HUD state. Treat the RL path as
+experimental until its synchronization issue is corrected and retrained.
+
+## Limitations
+
+- The simulator is two-dimensional and is not a flight-dynamics, radio,
+  collision-certification, or hardware-control system.
+- The current PPO loop can produce stale transitions and asymmetric reward
+  timing because agents submit actions sequentially to a shared simulation.
+- No checkpoint, multi-seed evaluation, trained baseline comparison, or safety
+  guarantee is published.
+- Boids behavior demonstrates local coordination heuristics, not globally optimal
+  formation control.
+
+## Numbered commit history
+
+1. `Initial` - import the classroom swarm and experimental PPO implementation.
+2. `01` - remove generated models and logs, then add a real simulator preview.
+3. `02` - standardize the evidence-first GitHub README format.
+
+## Suggested GitHub topics
+
+`swarm-robotics` `multi-agent-reinforcement-learning` `pygame`
+`gymnasium` `stable-baselines3` `ppo` `autonomous-systems` `python`
+
+## License and attribution
+
+No repository-wide license file is included. Pygame, Gymnasium,
+Stable-Baselines3, NumPy, and other dependencies remain subject to their
+respective licenses.
